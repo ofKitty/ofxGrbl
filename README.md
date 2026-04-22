@@ -1,190 +1,203 @@
 # ofxGrbl
-[Beta] This is an add-on for controlling [Grbl](https://github.com/grbl/grbl) (CNC control firmware for Arduino) from openFrameworks.
 
-[![ofxGrbl: Grbl (CNC control firmware for Arduino) with openFrameworks demo](http://img.youtube.com/vi/3CR-sZpXvfI/0.jpg)](http://www.youtube.com/watch?v=3CR-sZpXvfI "ofxGrbl: Grbl (CNC control firmware for Arduino) with openFrameworks demo")
+An openFrameworks addon for communicating with [GRBL](https://github.com/grbl/grbl) — the open-source G-code motion controller firmware for Arduino and compatible boards.
+
+Works with any GRBL-driven machine: pen plotters, laser cutters, CNC routers, foam cutters, pick-and-place, and anything else that moves in X/Y/Z.
+
+---
+
+## Features
+
+- **Queued G-code sender** — classic `ok`-handshake protocol, one line in flight at a time
+- **Real-time commands** — feed hold (`!`), cycle start (`~`), jog cancel (`0x85`), status query (`?`) sent as raw bytes so GRBL's ISR picks them up immediately
+- **Jog support** — `$J=` incremental and continuous jog with instant cancel
+- **Queue pause / resume** — stop dispatching new lines without halting the machine mid-move; combine with feed hold for a full pause
+- **Editor-line tracking** — tag each queued line with its source-file line number to drive a "follow the current command" highlight in a code editor UI
+- **Settings round-trip** — `GrblSettings` parses the full `$$` block into typed fields and provides `formatLine()` helpers to write individual settings back
+- **Simulation mode** — drain the queue with synthetic `ok` replies when no hardware is attached, for UI development and testing
+- **Console ring buffer** — TX/RX log for display in a serial monitor window; status reports are kept in a separate slot so a 10 Hz poll loop can't drown meaningful output
+
+---
 
 ## Requirements
 
-### Software
+- openFrameworks 0.12+
+- No extra addons required — only `ofSerial` (bundled with OF)
 
-* **ofxGrbl** (this add-on)<br />
-[https://github.com/TsubokuLab/ofxGrbl](https://github.com/TsubokuLab/ofxGrbl)
+> The old `ofxUI` / `ofxXmlSettings` dependency has been removed. UI and settings persistence are left to the calling application.
 
-* **Grbl** (Arduino sketch / firmware)<br />
-[https://github.com/grbl/grbl](https://github.com/grbl/grbl)
+---
 
-### Hardware
+## Quick start
 
-#### Electronics
+```cpp
+#include "ofxGrbl.h"   // pulls in GrblSender + GrblSettings
 
-| Item | Price (reference) | Notes | Where to buy |
-| ------------- | ------------- | ------------- | ------------- |
-| Arduino UNO | ~435 JPY each | Clones are fine | [http://amzn.to/2oNAEX2](http://amzn.to/2oNAEX2) |
-| CNC shield | ~225 JPY each | Main shield for this setup; very useful | [http://amzn.to/2nLtFyg](http://amzn.to/2nLtFyg) |
-| NEMA 17 stepper motor | $16.49 each | 200-step motor, DC 12–24 V / 1.7 A | [http://bit.ly/2nLyXde](http://bit.ly/2nLyXde) |
-| A4988 (stepper driver) | ~1000 JPY for 5 | Burns out fairly often from overcurrent; keep spares | [http://amzn.to/2oNQD7r](http://amzn.to/2oNQD7r) |
-| Endstop / limit switch | $0.44 each | Needed for homing; prevents damage if the axis over-travels. Skip if you do not use limits | [http://bit.ly/2opXI1Q](http://bit.ly/2opXI1Q) |
-| 12–24 V 8 A AC adapter | ~2100 JPY each | ~1.7 A per motor; 8 A is a reasonable target. Easy to kill with a short—keep extras | [http://amzn.to/2oqFGN9](http://amzn.to/2oqFGN9) |
-| Emergency-stop pushbutton | ~788 JPY each | Stops motion when the motor loads up or the board is in trouble. Very handy | [http://amzn.to/2oqHN3x](http://amzn.to/2oqHN3x) |
+class ofApp : public ofBaseApp {
+    grbl::GrblSender sender;
+    grbl::GrblSettings settings;
+public:
+    void setup() {
+        // Connect — use the port your Arduino appears on
+        sender.connectSerial("COM3", 115200);   // Windows
+        // sender.connectSerial("/dev/ttyUSB0", 115200);  // Linux
+        // sender.connectSerial("/dev/tty.usbmodem*", 115200);  // macOS
 
-Bundled kits with Arduino + CNC shield + four A4988 drivers are also available:
+        // Or test without hardware:
+        // sender.setSimulationMode(true);
+    }
 
-* Arduino + CNC shield + A4988 ×4 — ~2630 JPY<br />
-[http://amzn.to/2nLkYUN](http://amzn.to/2nLkYUN)
+    void update() {
+        sender.update();  // call every frame
+    }
 
-#### Rails and mechanics
+    void keyPressed(int key) {
+        if (key == 'p') {
+            // Queue a multi-line G-code block
+            sender.enqueueGCodeBlock(
+                "G21\n"          // millimetre mode
+                "G90\n"          // absolute positioning
+                "G0 X0 Y0\n"
+                "G1 X100 Y0 F1000\n"
+                "G1 X100 Y100\n"
+                "G0 X0 Y0\n"
+            );
+        }
+        if (key == ' ') sender.sendFeedHold();   // pause mid-move
+        if (key == 'r') sender.sendCycleStart(); // resume
+    }
+};
+```
 
-A bit pricey, but OpenBuilds **V-Slot** extrusion is a solid choice.
+---
 
-* OpenBuilds part store<br />
-[http://openbuildspartstore.com](http://openbuildspartstore.com)
+## API overview
 
-Open-source hardware designs mean you can 3D-print related parts.
+### `grbl::GrblSender`
 
-* Prefer the official store above for quality. Most parts also appear on AliExpress if you want lower cost:<br />
-[https://www.aliexpress.com/store/123598](https://www.aliexpress.com/store/123598)
+| Method | Description |
+|---|---|
+| `connectSerial(port, baud)` | Open serial connection |
+| `disconnectSerial()` | Close and clear queue |
+| `setSimulationMode(bool)` | Bench mode — no hardware needed |
+| `enqueueLine(line, editorLine)` | Queue one G-code line |
+| `enqueueGCodeBlock(text)` | Queue a multi-line block (strips comments and blanks) |
+| `sendImmediateLine(line)` | Bypass queue — urgent one-shot command |
+| `clearQueue()` | Discard all pending lines |
+| `setQueuePaused(bool)` | Stop / resume dispatching from the queue |
+| `sendFeedHold()` | GRBL real-time `!` — smooth deceleration to a stop |
+| `sendCycleStart()` | GRBL real-time `~` — resume after feed hold |
+| `sendJogCancel()` | GRBL real-time `0x85` — abort `$J=` jog immediately |
+| `sendRealtimeStatusQuery()` | Send `?` — result appears in `getLastStatusReport()` |
+| `getLastStatusReport()` | Most recent `<state\|MPos:...>` string |
+| `getStatusReportSeq()` | Increments each time a new status report arrives |
+| `currentEditorLine()` | 0-based editor line of the currently executing command |
+| `consoleLines()` | Ring buffer of TX/RX strings for a serial monitor UI |
+| `update()` | Call every frame from `ofApp::update()` |
 
-| Item | Price (reference) | Notes | Where to buy |
-| ------------- | ------------- | ------------- | ------------- |
-| V-Slot® linear rail | ~$6 / m | V-groove extrusion; max length per stick was around 1.5 m | 20 mm × 20 mm [http://bit.ly/2qD2H0e](http://bit.ly/2qD2H0e)<br />20 mm × 40 mm [http://bit.ly/2qcXwTz](http://bit.ly/2qcXwTz) |
-| Solid V Wheel™ kit | $35 / 20 pcs | Wheels that ride in the V-groove | [http://bit.ly/2pIwxfD](http://bit.ly/2pIwxfD) |
-| Smooth idler pulley wheel kit | $31.90 / 20 pcs | Idler wheels for belt routing without fixing the belt directly to the rail | [http://bit.ly/2oO80or](http://bit.ly/2oO80or) |
-| Eccentric spacer 6 mm | $19.90 / 20 pcs | Off-center spacer to tension one side of the wheel set | [http://bit.ly/2n1N4y7](http://bit.ly/2n1N4y7) |
-| GT2 timing belt | ~1200 JPY / 5 m | GT2, 2 mm pitch | [http://amzn.to/2nLpgf1](http://amzn.to/2nLpgf1) |
-| Pulley | ~680 JPY (40-tooth example) | Match 2 mm pitch to the belt; tooth count affects speed vs. torque | [http://amzn.to/2nu9enP](http://amzn.to/2nu9enP) |
-| T-nut M5 | $3.50 / 25 pcs | For fixing belts and plates to extrusion | [http://bit.ly/2n1Hufa](http://bit.ly/2n1Hufa) |
-| Low-profile screw M5 × 6 mm | $0.10 each | For fixing belt to rail | [http://bit.ly/2nOt6W6](http://bit.ly/2nOt6W6) |
-| Low-profile screw M5 × 8 mm | $10.99 / 100 pcs | For plates and corner brackets | [http://bit.ly/2ntViu7](http://bit.ly/2ntViu7) |
-| Idler pulley plate | $3.75 each | Mounts idler pulleys to the rail | [http://bit.ly/2oqnR0d](http://bit.ly/2oqnR0d) |
-| Motor mount plate | $4.50 each | Mounts stepper to rail | [http://bit.ly/2n1LWdT](http://bit.ly/2n1LWdT) |
-| Gantry plate Universal | $7.95 each | Larger plate for moving assemblies; use the 20 mm plate below if you do not need the size | [http://bit.ly/2nOqKXA](http://bit.ly/2nOqKXA) |
-| Gantry plate 20 mm | $4.50 each | Smaller moving plate; very useful | [http://bit.ly/2oqmZZA](http://bit.ly/2oqmZZA) |
-| 90° inside bracket | $5 / 10 pcs | Inside-corner bracket; angular accuracy is so-so—cast corners below may be better | [http://bit.ly/2oy2LtY](http://bit.ly/2oy2LtY) |
-| 90° cast corner | $0.75 each | Corner piece screwed to extrusion; needs T-nuts and low-profile screws to avoid interference | [http://bit.ly/2oqqgs0](http://bit.ly/2oqqgs0) |
+### `grbl::GrblSettings`
 
-* Build ideas and guides are collected on the OpenBuilds site:<br />
-[http://openbuilds.org/](http://openbuilds.org/)
+```cpp
+grbl::GrblSettings s;
+s.parseBlock(rawTextFromGrbl);  // feed the $$ reply
 
-## Related add-ons
+// Read typed fields
+float maxX = s.maxTravelX;
+bool  soft = s.softLimitsEnabled;
 
-* **ofxGrbl** — this add-on (Grbl from openFrameworks).
+// Write a change back
+sender.sendImmediateLine(grbl::GrblSettings::formatLine(130, 350.f)); // $130=350.000
+```
 
-* **ofxUI** — used for the UI.
+`GrblSettings::parseBlock()` populates both the typed fields and `s.all` — a `std::map<int,std::string>` of every `$N=value` pair, so you can read settings that don't have a named field.
 
-* **ofxXmlSettings** — used to save ofxUI settings.
+---
 
-## Usage (work in progress)
+## Jogging
 
-* **GrblManager** — ofxGrbl example (YouTube)<br />
-[![GrblManager : ofxGrbl example ](http://img.youtube.com/vi/54ps6AzPNp4/0.jpg)](http://www.youtube.com/watch?v=54ps6AzPNp4 "GrblManager : ofxGrbl example ")
+```cpp
+// Incremental jog: 10 mm in +X at 3000 mm/min
+sender.enqueueLine("$J=G91 G21 X10 F3000");
 
-## Configuring Grbl
+// Cancel an in-progress jog instantly (does not touch the G-code queue)
+sender.sendJogCancel();
+```
 
-Change settings by sending serial commands. The Arduino Serial Monitor works; send commands with a **carriage return (CR)** line ending.
+GRBL's `$J=` commands use a separate planner buffer so they don't interrupt queued motion jobs. Jog cancel sends the raw `0x85` byte, which GRBL handles at interrupt level.
 
-See the official guide:<br />
-[https://github.com/grbl/grbl/wiki/Configuring-Grbl-v0.9](https://github.com/grbl/grbl/wiki/Configuring-Grbl-v0.9)
+---
 
-### Show current settings
+## Configuring GRBL
+
+Send `$$` to dump all settings:
 
 ```
 $$
 ```
 
-You should get something like:
+Example reply (GRBL 1.1):
 
 ```
-$0=3 (step pulse, usec)
-$1=1 (step idle delay, msec)
-$2=0 (step port invert mask:00000000)
-$3=0 (dir port invert mask:00000000)
-$4=0 (step enable invert, bool)
-$5=0 (limit pins invert, bool)
-$6=0 (probe pin invert, bool)
-$10=3 (status report mask:00000011)
-$11=10.000 (junction deviation, mm)
-$12=0.002 (arc tolerance, mm)
-$13=0 (report inches, bool)
-$20=0 (soft limits, bool)
-$21=0 (hard limits, bool)
-$22=0 (homing cycle, bool)
-$23=0 (homing dir invert mask:00000000)
-$24=25.000 (homing feed, mm/min)
-$25=500.000 (homing seek, mm/min)
-$26=250 (homing debounce, msec)
-$27=1.000 (homing pull-off, mm)
-$100=20.000 (x, step/mm)
-$101=20.000 (y, step/mm)
-$102=20.000 (z, step/mm)
-$110=20000.000 (x max rate, mm/min)
-$111=20000.000 (y max rate, mm/min)
-$112=20000.000 (z max rate, mm/min)
-$120=500.000 (x accel, mm/sec^2)
-$121=500.000 (y accel, mm/sec^2)
-$122=500.000 (z accel, mm/sec^2)
-$130=1301.470 (x max travel, mm)
-$131=833.460 (y max travel, mm)
-$132=994.120 (z max travel, mm)
+$0=10    (step pulse, usec)
+$20=0    (soft limits, bool)
+$21=0    (hard limits, bool)
+$110=3000.000  (x max rate, mm/min)
+$111=3000.000  (y max rate, mm/min)
+$130=400.000   (x max travel, mm)
+$131=300.000   (y max travel, mm)
+...
 ok
 ```
 
-### Change a setting
-
-Send the parameter number and value, for example to set the X-axis maximum feed rate to 15000 mm/min:
+Change a setting with:
 
 ```
-$110=15000
+$110=1500
 ```
 
-### Computing steps per millimeter
+Use `GrblSettings::parseBlock()` + `formatLine()` to do this programmatically — see example above.
 
-To scale travel correctly you need steps per mm from:
+---
 
-* Steps per motor revolution (`steps`)
-* Driver microstep setting (`micros`)
-* Belt pitch (mm)
-* Pulley tooth count (`teeth`)
-
-Formula:
+## Steps-per-mm formula
 
 ```
-(steps * micros) / (belt_pitch_mm * teeth) = steps/mm
+stepsPerMm = (motorSteps × microSteps) / (beltPitchMm × pulleyTeeth)
 ```
 
-Example:
+Convenience helper:
 
-| Parameter | Value |
-| ------------- | ------------- |
-| Steps per revolution | 200 |
-| Microsteps | 4 |
-| Belt pitch | 2 mm |
-| Pulley teeth | 20 |
-
-```
-(200 * 4) / (2 * 20) = 20 steps/mm
+```cpp
+float spm = grbl::GrblSettings::stepsPerMm(200, 8, 2.0f, 20);
+// 200-step motor, 1/8 microstep, GT2 belt, 20-tooth pulley → 40 steps/mm
+sender.sendImmediateLine(grbl::GrblSettings::formatLine(100, spm)); // $100=40.000
 ```
 
-Apply per axis via serial commands, for example:
+---
 
-```
-$100=20
-$101=20
-$102=20
-```
+## Console ring buffer
 
-## Loading paths from Illustrator
+`GrblSender::consoleLines()` is a `std::deque<std::string>` that mirrors every TX (`> ...`) and RX (`< ...`) line up to `kMaxConsoleLines` (256). Wire it directly to an ImGui or ofxGui text list for a live serial monitor.
 
-Pipeline:
+Status reports (`<Idle|MPos:...>`) are stored separately in `getLastStatusReport()` and do **not** appear in the console ring unless you set `sender.logStatusReports = true`. This prevents a 10 Hz poll loop from drowning meaningful output.
 
-**Illustrator (.ai) → DXF (.dxf) → G-code (.gcode / .ngc / .nc)**
+---
 
-### Software
+## Upgrading from the old ofxGrbl
 
-**dxf2gcode** — free tool that converts DXF to G-code<br />
-[https://sourceforge.net/projects/dxf2gcode/](https://sourceforge.net/projects/dxf2gcode/)
+The previous version depended on `ofxUI` and `ofxXmlSettings` and provided a self-contained UI widget. The new version is a pure communication layer — UI and settings persistence are the application's responsibility. If you need the old behaviour it is preserved on the `legacy` branch.
 
-### Steps
+Key differences:
 
-1. Export paths from Illustrator to DXF. Reference (Japanese page): [http://mathrax.sakura.ne.jp/kuze_jp/p-comp/cad/page003.html](http://mathrax.sakura.ne.jp/kuze_jp/p-comp/cad/page003.html)
-2. Open the DXF in dxf2gcode and export `.gcode` / `.ngc`.
-3. Load the output file with the LOAD icon or by drag-and-drop into the app.
+| Old | New |
+|---|---|
+| `ofxGrbl::sendMessage(line)` | `GrblSender::enqueueLine(line)` or `sendImmediateLine(line)` |
+| `ofxGrbl::sendQueList` | `GrblSender::consoleLines()` |
+| `GrblSettings` (extends `ofBaseApp`) | `grbl::GrblSettings` (plain struct, no OF dependency) |
+| `ofxUI` panel | Bring your own ImGui / ofxGui widget |
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -1,131 +1,177 @@
 #pragma once
-#include "ofMain.h"
 
-class GrblSettings : public ofBaseApp {
+#include <map>
+#include <sstream>
+#include <string>
 
-	/*
-	// About Grbl Settings
-	https://github.com/grbl/grbl/wiki/Configuring-Grbl-v0.9
+namespace grbl {
 
-	$0=10 (step pulse, usec)
-	$1=25 (step idle delay, msec)
-	$2=0 (step port invert mask:00000000)
-	$3=6 (dir port invert mask:00000110)
-	$4=0 (step enable invert, bool)
-	$5=0 (limit pins invert, bool)
-	$6=0 (probe pin invert, bool)
-	$10=3 (status report mask:00000011)
-	$11=0.020 (junction deviation, mm)
-	$12=0.002 (arc tolerance, mm)
-	$13=0 (report inches, bool)
-	$20=0 (soft limits, bool)
-	$21=0 (hard limits, bool)
-	$22=0 (homing cycle, bool)
-	$23=1 (homing dir invert mask:00000001)
-	$24=50.000 (homing feed, mm/min)
-	$25=635.000 (homing seek, mm/min)
-	$26=250 (homing debounce, msec)
-	$27=1.000 (homing pull-off, mm)
-	$100=314.961 (x, step/mm)
-	$101=314.961 (y, step/mm)
-	$102=314.961 (z, step/mm)
-	$110=635.000 (x max rate, mm/min)
-	$111=635.000 (y max rate, mm/min)
-	$112=635.000 (z max rate, mm/min)
-	$120=50.000 (x accel, mm/sec^2)
-	$121=50.000 (y accel, mm/sec^2)
-	$122=50.000 (z accel, mm/sec^2)
-	$130=225.000 (x max travel, mm)
-	$131=125.000 (y max travel, mm)
-	$132=170.000 (z max travel, mm)
-	*/
+/// All GRBL 1.1 `$$` settings as typed fields.
+///
+/// Populate by calling parseBlock() with the raw text you get back from `$$`.
+/// Write individual changes back by calling formatLine() and sending the result
+/// to GrblSender::sendImmediateLine().
+///
+/// Only the fields most commonly needed for machine setup are broken out here.
+/// Every other setting is also available via the raw `all` map (key = setting
+/// number, value = raw string as received from GRBL).
+struct GrblSettings {
 
-public:
+    // -----------------------------------------------------------------------
+    // Motion
+    // -----------------------------------------------------------------------
 
+    int   stepPulseUsec       = 10;     ///< $0  step pulse width (µs)
+    int   stepIdleDelayMsec   = 25;     ///< $1  stepper disable delay after idle (ms)
+    float junctionDeviation   = 0.02f;  ///< $11 cornering deviation (mm)
+    float arcTolerance        = 0.002f; ///< $12 arc interpolation tolerance (mm)
 
-	//$0=10 (step pulse, usec)
-	int StepPulse;
-	//$1=25 (step idle delay, msec)
-	int StepIdleDelay;
-	//$2=0 (step port invert mask:00000000)
-	int StepPortInvertMask;
-	//$3=6 (dir port invert mask:00000110)
-	int DirPortInvertMask;
-	//$4=0 (step enable invert, bool)
-	int StepEnableInvert;
-	//$5=0 (limit pins invert, bool)
-	int LimitPinsInvert;
-	//$6=0 (probe pin invert, bool)
-	int ProbePinInvert;
-	//$10=3 (status report mask:00000011
-	int StatusReportMask;
-	//$11=0.020 (junction deviation, mm)
-	float JunctionDeviation;
-	//$12=0.002 (arc tolerance, mm)
-	float ArcTolerance;
-	//$13=0 (report inches, bool)
-	int ReportInches;
-	//$20=0 (soft limits, bool)
-	int SoftLimits;
-	//$21=0 (hard limits, bool)
-	int HardLimits;
-	//$22=0 (homing cycle, bool)
-	int HomingCycles;
-	//$23=1 (homing dir invert mask:00000001)
-	int HomingDirInvertMask;
-	//$24=50.000 (homing feed, mm/min)
-	float HomingFeed;
-	//$25=635.000 (homing seek, mm/min)
-	float HomingSeek;
-	//$26=250 (homing debounce, msec)
-	int HomingDebounce;
-	//$27=1.000 (homing pull-off, mm)
-	float HomingPullOff;
-	//$100=314.961 (x, step/mm)
-	float StepX;
-	//$101=314.961 (y, step/mm)
-	float StepY;
-	//$102=314.961 (z, step/mm)
-	float StepZ;
+    // -----------------------------------------------------------------------
+    // Limits & homing
+    // -----------------------------------------------------------------------
 
-	ofVec3f HomePosition;
+    bool  softLimitsEnabled   = false;  ///< $20
+    bool  hardLimitsEnabled   = false;  ///< $21
+    bool  homingEnabled       = false;  ///< $22
+    float homingFeedMmMin     = 50.f;   ///< $24
+    float homingSeekMmMin     = 635.f;  ///< $25
+    int   homingDebounceMsec  = 250;    ///< $26
+    float homingPullOffMm     = 1.f;    ///< $27
 
-	// Max Travel
-	//$130=225.000 (x max travel, mm)
-	//$131=125.000 (y max travel, mm)
-	//$132=170.000 (z max travel, mm)
-	ofVec3f MaxTravel;
-	
-	// Step Settings (step/mm)
-	ofVec3f StepParMillimeter;
+    // -----------------------------------------------------------------------
+    // Steps per mm
+    // -----------------------------------------------------------------------
 
-	// Accelaration
-	//$120=50.000 (x accel, mm/sec^2)
-	//$121=50.000 (y accel, mm/sec^2)
-	//$122=50.000 (z accel, mm/sec^2)
-	ofVec3f Accel;
+    float stepsPerMmX  = 80.f;   ///< $100
+    float stepsPerMmY  = 80.f;   ///< $101
+    float stepsPerMmZ  = 80.f;   ///< $102
 
-	// Max Rate
-	//$110=635.000 (x max rate, mm/min)
-	//$111=635.000 (y max rate, mm/min)
-	//$112=635.000 (z max rate, mm/min)
-	ofVec3f MaxSpeed;
+    // -----------------------------------------------------------------------
+    // Max rates (mm/min)
+    // -----------------------------------------------------------------------
 
-	// Step Invert
-	bool StepInvertX;
-	bool StepInvertY;
-	bool StepInvertZ;
+    float maxRateX = 1000.f;  ///< $110
+    float maxRateY = 1000.f;  ///< $111
+    float maxRateZ = 1000.f;  ///< $112
 
-	// Mode (Spindle/Laser/Plotter)
-	string Mode;
-	// Spindle Speed (S0-S1000)
-	float SpindleSpeed;
-	// Plotter pen down distance (0-100mm)
-	float PushDistance;
-	// Z Axis Settings
-	bool isUseZAxis;
-	float UpPos;
-	float DownPos;
+    // -----------------------------------------------------------------------
+    // Acceleration (mm/sec²)
+    // -----------------------------------------------------------------------
 
-	float FeedbackInterval;
+    float accelX = 50.f;  ///< $120
+    float accelY = 50.f;  ///< $121
+    float accelZ = 50.f;  ///< $122
+
+    // -----------------------------------------------------------------------
+    // Max travel (mm)  — used by soft limits
+    // -----------------------------------------------------------------------
+
+    float maxTravelX = 200.f;  ///< $130
+    float maxTravelY = 200.f;  ///< $131
+    float maxTravelZ = 200.f;  ///< $132
+
+    // -----------------------------------------------------------------------
+    // Raw settings map — every $N=value pair from `$$`, key = N
+    // -----------------------------------------------------------------------
+
+    std::map<int, std::string> all;
+
+    // -----------------------------------------------------------------------
+    // Parsing
+    // -----------------------------------------------------------------------
+
+    /// Feed the raw text block returned by GRBL's `$$` command.
+    /// Returns the number of settings parsed.
+    int parseBlock(const std::string& text) {
+        all.clear();
+        std::istringstream ss(text);
+        std::string line;
+        int count = 0;
+        while (std::getline(ss, line)) {
+            if (line.empty() || line[0] != '$') continue;
+            size_t eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            // Key: digits between '$' and '='
+            std::string keyStr = line.substr(1, eq - 1);
+            if (keyStr.empty()) continue;
+            bool allDigits = true;
+            for (char ch : keyStr) { if (!std::isdigit((unsigned char)ch)) { allDigits = false; break; } }
+            if (!allDigits) continue;
+            int key = std::stoi(keyStr);
+            // Value: everything up to the first space or '(' (GRBL appends a comment)
+            std::string val = line.substr(eq + 1);
+            size_t end = val.find_first_of(" \t(");
+            if (end != std::string::npos) val.resize(end);
+            all[key] = val;
+            ++count;
+        }
+        applyFromMap();
+        return count;
+    }
+
+    /// Produce a single `$N=value` command string ready to send back to GRBL.
+    static std::string formatLine(int key, const std::string& value) {
+        return "$" + std::to_string(key) + "=" + value;
+    }
+    static std::string formatLine(int key, int value) {
+        return "$" + std::to_string(key) + "=" + std::to_string(value);
+    }
+    static std::string formatLine(int key, float value) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "$%d=%.3f", key, value);
+        return std::string(buf);
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    /// Steps-per-mm formula for a belt/pulley drive:
+    ///   (motorSteps * microSteps) / (beltPitchMm * pulleyTeeth)
+    static float stepsPerMm(int motorSteps, int microSteps, float beltPitchMm, int pulleyTeeth) {
+        return (float)(motorSteps * microSteps) / (beltPitchMm * (float)pulleyTeeth);
+    }
+
+private:
+    void applyFromMap() {
+        auto getFloat = [&](int k, float def) -> float {
+            auto it = all.find(k);
+            if (it == all.end()) return def;
+            try { return std::stof(it->second); } catch (...) { return def; }
+        };
+        auto getInt = [&](int k, int def) -> int {
+            auto it = all.find(k);
+            if (it == all.end()) return def;
+            try { return std::stoi(it->second); } catch (...) { return def; }
+        };
+        auto getBool = [&](int k, bool def) -> bool {
+            return getInt(k, def ? 1 : 0) != 0;
+        };
+
+        stepPulseUsec      = getInt(0,  stepPulseUsec);
+        stepIdleDelayMsec  = getInt(1,  stepIdleDelayMsec);
+        junctionDeviation  = getFloat(11, junctionDeviation);
+        arcTolerance       = getFloat(12, arcTolerance);
+        softLimitsEnabled  = getBool(20, softLimitsEnabled);
+        hardLimitsEnabled  = getBool(21, hardLimitsEnabled);
+        homingEnabled      = getBool(22, homingEnabled);
+        homingFeedMmMin    = getFloat(24, homingFeedMmMin);
+        homingSeekMmMin    = getFloat(25, homingSeekMmMin);
+        homingDebounceMsec = getInt(26,  homingDebounceMsec);
+        homingPullOffMm    = getFloat(27, homingPullOffMm);
+        stepsPerMmX        = getFloat(100, stepsPerMmX);
+        stepsPerMmY        = getFloat(101, stepsPerMmY);
+        stepsPerMmZ        = getFloat(102, stepsPerMmZ);
+        maxRateX           = getFloat(110, maxRateX);
+        maxRateY           = getFloat(111, maxRateY);
+        maxRateZ           = getFloat(112, maxRateZ);
+        accelX             = getFloat(120, accelX);
+        accelY             = getFloat(121, accelY);
+        accelZ             = getFloat(122, accelZ);
+        maxTravelX         = getFloat(130, maxTravelX);
+        maxTravelY         = getFloat(131, maxTravelY);
+        maxTravelZ         = getFloat(132, maxTravelZ);
+    }
 };
+
+} // namespace grbl
