@@ -1,3 +1,1 @@
 ofxGrbl
-ofxUI
-ofxXmlSettings

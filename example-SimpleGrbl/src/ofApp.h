@@ -3,25 +3,40 @@
 #include "ofMain.h"
 #include "ofxGrbl.h"
 
-class ofApp : public ofBaseApp{
+/// example-SimpleGrbl
+/// Demonstrates the minimal ofxGrbl workflow:
+///   1. Connect to GRBL over serial (or run in simulation mode)
+///   2. Queue a G-code job
+///   3. Show live status and the console ring buffer
+///
+/// Key bindings:
+///   C  — connect (edit PORT below to match your device)
+///   S  — toggle simulation mode (no hardware required)
+///   P  — queue a small test job
+///   H  — send feed hold  (pause mid-move)
+///   R  — send cycle start (resume)
+///   Q  — clear the queue
+///   ?  — request a status report
+class ofApp : public ofBaseApp {
+public:
+    void setup()  override;
+    void update() override;
+    void draw()   override;
+    void keyPressed(int key) override;
 
-	public:
-		void setup();
-		void update();
-		void draw();
-		void exit();
+private:
+    grbl::GrblSender   sender;
+    grbl::GrblSettings settings;
 
-		void keyPressed(int key);
-		void keyReleased(int key);
-		void mouseMoved(int x, int y );
-		void mouseDragged(int x, int y, int button);
-		void mousePressed(int x, int y, int button);
-		void mouseReleased(int x, int y, int button);
-		void mouseEntered(int x, int y);
-		void mouseExited(int x, int y);
-		void windowResized(int w, int h);
-		void dragEvent(ofDragInfo dragInfo);
-		void gotMessage(ofMessage msg);
-		
-		ofxGrbl grbl;
+    // Edit to match your machine's serial port:
+    //   Windows:  "COM3"
+    //   Linux:    "/dev/ttyUSB0"
+    //   macOS:    "/dev/tty.usbmodem14201"
+    static constexpr const char* PORT = "COM3";
+    static constexpr int         BAUD = 115200;
+
+    ofTrueTypeFont font;
+
+    static constexpr float kStatusIntervalSec = 0.1f;
+    float lastStatusTime_ = 0.f;
 };
