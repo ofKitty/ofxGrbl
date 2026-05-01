@@ -75,25 +75,27 @@ public:
 
 ### `grbl::GrblSender`
 
-| Method | Description |
-|---|---|
-| `connectSerial(port, baud)` | Open serial connection |
-| `disconnectSerial()` | Close and clear queue |
-| `setSimulationMode(bool)` | Bench mode — no hardware needed |
-| `enqueueLine(line, editorLine)` | Queue one G-code line |
-| `enqueueGCodeBlock(text)` | Queue a multi-line block (strips comments and blanks) |
-| `sendImmediateLine(line)` | Bypass queue — urgent one-shot command |
-| `clearQueue()` | Discard all pending lines |
-| `setQueuePaused(bool)` | Stop / resume dispatching from the queue |
-| `sendFeedHold()` | GRBL real-time `!` — smooth deceleration to a stop |
-| `sendCycleStart()` | GRBL real-time `~` — resume after feed hold |
-| `sendJogCancel()` | GRBL real-time `0x85` — abort `$J=` jog immediately |
-| `sendRealtimeStatusQuery()` | Send `?` — result appears in `getLastStatusReport()` |
-| `getLastStatusReport()` | Most recent `<state\|MPos:...>` string |
-| `getStatusReportSeq()` | Increments each time a new status report arrives |
-| `currentEditorLine()` | 0-based editor line of the currently executing command |
-| `consoleLines()` | Ring buffer of TX/RX strings for a serial monitor UI |
-| `update()` | Call every frame from `ofApp::update()` |
+
+| Method                          | Description                                            |
+| ------------------------------- | ------------------------------------------------------ |
+| `connectSerial(port, baud)`     | Open serial connection                                 |
+| `disconnectSerial()`            | Close and clear queue                                  |
+| `setSimulationMode(bool)`       | Bench mode — no hardware needed                        |
+| `enqueueLine(line, editorLine)` | Queue one G-code line                                  |
+| `enqueueGCodeBlock(text)`       | Queue a multi-line block (strips comments and blanks)  |
+| `sendImmediateLine(line)`       | Bypass queue — urgent one-shot command                 |
+| `clearQueue()`                  | Discard all pending lines                              |
+| `setQueuePaused(bool)`          | Stop / resume dispatching from the queue               |
+| `sendFeedHold()`                | GRBL real-time `!` — smooth deceleration to a stop     |
+| `sendCycleStart()`              | GRBL real-time `~` — resume after feed hold            |
+| `sendJogCancel()`               | GRBL real-time `0x85` — abort `$J=` jog immediately    |
+| `sendRealtimeStatusQuery()`     | Send `?` — result appears in `getLastStatusReport()`   |
+| `getLastStatusReport()`         | Most recent `<state|MPos:...>` string                  |
+| `getStatusReportSeq()`          | Increments each time a new status report arrives       |
+| `currentEditorLine()`           | 0-based editor line of the currently executing command |
+| `consoleLines()`                | Ring buffer of TX/RX strings for a serial monitor UI   |
+| `update()`                      | Call every frame from `ofApp::update()`                |
+
 
 ### `grbl::GrblSettings`
 
@@ -177,26 +179,9 @@ sender.sendImmediateLine(grbl::GrblSettings::formatLine(100, spm)); // $100=40.0
 
 ## Console ring buffer
 
-`GrblSender::consoleLines()` is a `std::deque<std::string>` that mirrors every TX (`> ...`) and RX (`< ...`) line up to `kMaxConsoleLines` (256). Wire it directly to an ImGui or ofxGui text list for a live serial monitor.
+`GrblSender::consoleLines()` is a `std::deque<std::string>` that mirrors every TX (`> ...`) and RX (`< ...`) line up to `kMaxConsoleLines` (256). Wire it directly to ofxGui text list for a live serial monitor.
 
 Status reports (`<Idle|MPos:...>`) are stored separately in `getLastStatusReport()` and do **not** appear in the console ring unless you set `sender.logStatusReports = true`. This prevents a 10 Hz poll loop from drowning meaningful output.
-
----
-
-## Upgrading from the old ofxGrbl
-
-The previous version depended on `ofxUI` and `ofxXmlSettings` and provided a self-contained UI widget. The new version is a pure communication layer — UI and settings persistence are the application's responsibility. If you need the old behaviour it is preserved on the `legacy` branch.
-
-Key differences:
-
-| Old | New |
-|---|---|
-| `ofxGrbl::sendMessage(line)` | `GrblSender::enqueueLine(line)` or `sendImmediateLine(line)` |
-| `ofxGrbl::sendQueList` | `GrblSender::consoleLines()` |
-| `GrblSettings` (extends `ofBaseApp`) | `grbl::GrblSettings` (plain struct, no OF dependency) |
-| `ofxUI` panel | Bring your own ImGui / ofxGui widget |
-
----
 
 ## License
 
